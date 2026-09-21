@@ -1,0 +1,163 @@
+// Prisma schema — Notion clone
+//
+// Ordering model (documented per project spec):
+// - Page tree: adjacency list (`parentId` self-relation) + fractional index
+//   (`position`, via the `fractional-indexing` package) for sibling order.
+//   Moving/reordering a page only rewrites that one row's `position` string,
+//   never its siblings — O(1) writes regardless of list size. The tradeoff is
+//   that positions are opaque strings compared lexicographically, not
+//   integers, and pathological repeated inserts at the same spot can make
+//   them grow longer (mitigated by periodically rebalancing, not needed at
+//   this scale).
+// - Block tree (content *within* a page): NOT a separate table. TipTap owns
+//   a single ProseMirror document per page, persisted as `Page.content`
+//   (Json). The ProseMirror node tree already *is* the materialized block
+//   tree — nesting, ordering, drag-and-drop and indent/outdent are transaction
+//   operations ProseMirror provides natively. Reimplementing that as flat
+//   rows with parent pointers would fight the editor library instead of using
+//   it, for no query benefit here (search/backlinks are extracted from the
+//   JSON on save, see `Page.plainText`).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum WorkspaceRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   WorkspaceMember[]
+  createdPages  Page[]            @relation("PageCreatedBy")
+  favorites     Favorite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Auth.js (@auth/prisma-adapter) required models below.
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Workspace {
+  id   String @id @default(cuid())
+  name String
+  icon String?
+
+  members WorkspaceMember[]
+  pages   Page[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(OWNER)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model Page {
+  id          String  @id @default(cuid())
+  workspaceId String
+  parentId    String?
+
+  title      String  @default("Sans titre")
+  icon       String?
+  coverImage String?
+
+  // TipTap/ProseMirror document JSON — see ordering note at the top of this file.
+  content   Json    @default("{\"type\":\"doc\",\"content\":[]}")
+  plainText String  @default("") @db.Text
+
+  // Fractional index among siblings sharing the same (workspaceId, parentId).
+  position String
+
+  trashedAt DateTime?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent    Page?     @relation("PageTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Page[]    @relation("PageTree")
+  createdBy User      @relation("PageCreatedBy", fields: [createdById], references: [id])
+  favorites Favorite[]
+
+  @@index([workspaceId, parentId])
+  @@index([workspaceId, trashedAt])
+}
+
+model Favorite {
+  id     String @id @default(cuid())
+  userId String
+  pageId String
+
+  position String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, pageId])
+  @@index([userId])
+}
