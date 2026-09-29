@@ -1,110 +1,81 @@
-# Notion Clone
+# Assistant Note — a Notion-style workspace
 
-Application de prise de notes et de bases de données structurées : pages
-composées de blocs éditables, imbricables et réorganisables, avec des bases
-de données affichables sous plusieurs vues.
+A note-taking app with structured pages: nested pages made of editable blocks, organised in a sidebar tree, with databases displayable in several views planned. It is built milestone by milestone; only what is ticked below is considered done and browser-tested.
 
-Stack : Next.js (App Router, TypeScript strict), PostgreSQL + Prisma,
-TailwindCSS + shadcn/ui, TipTap, Auth.js, Vitest + Playwright.
+**Stack:** Next.js (App Router, strict TypeScript), PostgreSQL + Prisma, Tailwind CSS + shadcn/ui, TipTap, Auth.js, Vitest + Playwright.
 
-## État du projet
+> The UI is in French.
 
-Voir l'avancement par jalon ci-dessous. Le projet est livré incrémentalement ;
-seul ce qui est coché est considéré terminé et testé dans le navigateur.
+## Screenshots
 
-- [x] **Jalon 1 — Fondations** : schéma Prisma, authentification (email magique
-      + Google), layout + sidebar avec arborescence de pages, CRUD de pages
-      (création, renommage, suppression douce), autosave.
-- [ ] Jalon 2 — Éditeur par blocs (TipTap)
-- [ ] Jalon 3 — Imbrication avancée, drag & drop, corbeille, favoris, fil d'Ariane
-- [ ] Jalon 4 — Bases de données (vues Table/Board/Liste/Calendrier, filtres, tris)
-- [ ] Jalon 5 — Recherche, mentions, backlinks
-- [ ] Jalon 6 — Partage, rôles, lien public
-- [ ] Jalon 7 — Temps réel (Yjs)
-- [ ] Jalon 8 — Finition (perf, accessibilité, états vides/chargement)
+*Screenshots use a demo workspace ("Acme Studio") with made-up pages and user.*
 
-## Modèle de données : ordre et imbrication
+| Workspace | Sign-in |
+| --- | --- |
+| ![Workspace with page tree](docs/screenshots/workspace.png) | ![Sign-in page](docs/screenshots/login.png) |
 
-- **Arborescence des pages** (sidebar) : liste à parent pointé (`Page.parentId`)
-  + index fractionné (`Page.position`, package `fractional-indexing`) pour
-  l'ordre entre pages sœurs. Déplacer une page ne réécrit que la position de
-  cette page — jamais celle de ses voisines — donc un déplacement reste en
-  O(1) quelle que soit la taille de la liste. Contrepartie : les positions
-  sont des chaînes comparées lexicographiquement plutôt que des entiers, et
-  des insertions répétées au même endroit peuvent les faire grandir (pas un
-  problème à cette échelle ; un rééquilibrage périodique resterait possible).
-- **Blocs à l'intérieur d'une page** : *pas* de table séparée. TipTap possède
-  un unique document ProseMirror par page, persisté tel quel dans
-  `Page.content` (JSON). L'arbre de nœuds ProseMirror **est** déjà l'arbre de
-  blocs matérialisé : imbrication, ordre, glisser-déposer et indentation sont
-  des opérations que l'éditeur fournit nativement via ses transactions.
-  Réimplémenter cela comme des lignes plates avec pointeurs de parent irait à
-  l'encontre de la bibliothèque sans bénéfice de requête ici (la recherche et
-  les backlinks s'appuient sur `Page.plainText`, extrait du JSON à
-  l'enregistrement).
+## Status
 
-## Prérequis
+- [x] **Milestone 1 — Foundations**: Prisma schema, authentication (magic email link + Google), layout and sidebar with page tree, page CRUD (create, rename, soft delete), autosave
+- [ ] Milestone 2 — Block editor (TipTap)
+- [ ] Milestone 3 — Advanced nesting, drag and drop, trash, favourites, breadcrumbs
+- [ ] Milestone 4 — Databases (table / board / list / calendar views, filters, sorts)
+- [ ] Milestone 5 — Search, mentions, backlinks
+- [ ] Milestone 6 — Sharing, roles, public link
+- [ ] Milestone 7 — Real-time collaboration (Yjs)
+- [ ] Milestone 8 — Polish (performance, accessibility, empty / loading states)
 
-- Node.js 20.19+ (testé avec Node 25)
+## Data model: ordering and nesting
+
+- **Page tree** (sidebar): parent pointer (`Page.parentId`) + fractional index (`Page.position`, `fractional-indexing` package) for ordering siblings. Moving a page only rewrites that page's position, never its neighbours', so a move stays O(1) whatever the list size. The trade-off: positions are strings compared lexicographically, and repeated inserts at the same spot make them grow (fine at this scale; periodic rebalancing remains possible).
+- **Blocks inside a page**: *no* separate table. TipTap owns one ProseMirror document per page, stored as-is in `Page.content` (JSON). The ProseMirror node tree already *is* the block tree: nesting, ordering, drag and drop and indentation are native editor transactions. Search and backlinks rely on `Page.plainText`, extracted from the JSON on save.
+
+## Requirements
+
+- Node.js 20.19+
 - pnpm (`npm install -g pnpm`)
-- Docker (pour PostgreSQL en local), ou une instance PostgreSQL existante
+- Docker (for a local PostgreSQL) or an existing PostgreSQL instance
 
-## Installation
+## Setup
 
 ```bash
 pnpm install
-cp .env.example .env
-# éditer .env si besoin (Google OAuth, SMTP...)
-
-docker compose up -d      # démarre PostgreSQL sur localhost:5432
+cp .env.example .env          # edit if needed (Google OAuth, SMTP…)
+docker compose up -d          # PostgreSQL on localhost:5432
 pnpm exec prisma migrate dev
+pnpm dev                      # http://localhost:3000
 ```
 
-## Variables d'environnement
+The first sign-in automatically provisions a personal workspace with a welcome page.
 
-Voir `.env.example`. En résumé :
+### Environment variables
 
-| Variable | Rôle |
+See `.env.example`.
+
+| Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | Connexion PostgreSQL |
-| `AUTH_SECRET` | Secret Auth.js (`openssl rand -base64 32`) |
-| `AUTH_URL` | URL publique de l'app (dev : `http://localhost:3000`) |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Identifiants OAuth Google (optionnel en dev) |
-| `EMAIL_FROM`, `EMAIL_SERVER_*` | SMTP pour l'envoi du lien de connexion |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `AUTH_SECRET` | Auth.js secret (`openssl rand -base64 32`) |
+| `AUTH_URL` | Public app URL (dev: `http://localhost:3000`) |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth credentials (optional in dev) |
+| `EMAIL_FROM`, `EMAIL_SERVER_*` | SMTP used to send the sign-in link |
 
-**Connexion par e-mail sans SMTP configuré** : en développement, si
-`EMAIL_SERVER_HOST` est vide, le lien de connexion n'est pas envoyé par
-e-mail mais affiché dans la console du serveur (`pnpm dev`), ce qui permet de
-tester le parcours de bout en bout sans service SMTP.
+**Email sign-in without SMTP:** in development, when `EMAIL_SERVER_HOST` is empty, the sign-in link is printed in the server console instead of being emailed, so the whole flow can be tested without an SMTP service.
 
-**Google OAuth** : créez des identifiants sur la
-[Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-avec comme URI de redirection `http://localhost:3000/api/auth/callback/google`.
-
-## Lancement
-
-```bash
-pnpm dev
-```
-
-Ouvrir [http://localhost:3000](http://localhost:3000). La première connexion
-provisionne automatiquement un espace de travail personnel avec une page de
-bienvenue.
+**Google OAuth:** create credentials in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials) with `http://localhost:3000/api/auth/callback/google` as redirect URI.
 
 ## Migrations
 
 ```bash
-pnpm exec prisma migrate dev --name <description>   # nouvelle migration en dev
-pnpm exec prisma migrate deploy                       # application en production
-pnpm exec prisma generate                             # régénérer le client (fait automatiquement par migrate)
+pnpm exec prisma migrate dev --name <description>   # new migration (dev)
+pnpm exec prisma migrate deploy                       # apply in production
+pnpm exec prisma generate                             # regenerate the client (src/generated/prisma, git-ignored)
 ```
 
-Le client Prisma est généré dans `src/generated/prisma` (ignoré par git).
-
-## Qualité
+## Quality
 
 ```bash
-pnpm typecheck   # tsc --noEmit
-pnpm lint        # eslint
-pnpm build       # build de production
+pnpm typecheck
+pnpm lint
+pnpm build
 ```
